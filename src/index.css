@@ -1,2 +1,8 @@
 *, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+
+textarea:focus, button:focus-visible { outline: 2px solid #FF5800; outline-offset: 1px; }
+button:disabled { cursor: not-allowed; opacity: 0.6; }

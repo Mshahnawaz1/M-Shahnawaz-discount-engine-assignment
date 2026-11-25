@@ -9,7 +9,13 @@
 
 import { MAX_RULE_TEXT } from '../src/inputs/limits.js'
 
-const DEFAULT_MODEL = 'gemini-flash-latest' // rolling alias; pin with GEMINI_MODEL (e.g. gemini-3.8-flash)
+// Tried in order. Flash models regularly return 503 "high demand", so we fall
+// back to other models instead of failing the user. Lite goes first: in live
+// tests it parsed every case correctly in 2–4s (output is re-validated in the
+// browser anyway), while the larger models were often overloaded or ~12s.
+// Override with GEMINI_MODEL (one model or a comma-separated list).
+export const DEFAULT_MODELS = ['gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-3.6-flash']
+const RETRYABLE = new Set([404, 429, 500, 502, 503, 504]) // 404: model retired / unavailable to this key
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
 export const MAX_INPUT_CHARS = MAX_RULE_TEXT
 
@@ -71,7 +77,14 @@ const cleanList = (list) =>
     .map((s) => s.trim().slice(0, 60))
     .slice(0, 50)
 
-export async function parseRuleText(text, { apiKey, model, knownBrands, knownPlatforms, fetchImpl = fetch, timeoutMs = 15000 }) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+export function modelChain(model) {
+  const list = String(model ?? '').split(',').map((m) => m.trim()).filter(Boolean)
+  return list.length > 0 ? list : DEFAULT_MODELS
+}
+
+export async function parseRuleText(text, { apiKey, model, knownBrands, knownPlatforms, fetchImpl = fetch, attemptTimeoutMs = 9000, totalBudgetMs = 25000 }) {
   if (!apiKey) throw new RuleParserError('The rule parser is not configured (missing GEMINI_API_KEY).', 500)
 
   const brands = cleanList(knownBrands)
@@ -91,37 +104,64 @@ export async function parseRuleText(text, { apiKey, model, knownBrands, knownPla
     },
   }
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  let resp
-  try {
-    resp = await fetchImpl(`${API_BASE}/${model || DEFAULT_MODEL}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    })
-  } catch (err) {
-    throw new RuleParserError(err.name === 'AbortError' ? 'The AI service took too long to respond.' : 'Could not reach the AI service.', 504)
-  } finally {
-    clearTimeout(timer)
+  const started = Date.now()
+  let lastFailure = null
+
+  // 503s are usually short spikes: try the fast models, back off briefly, try
+  // them again, and only then the last (slowest) model, which gets whatever
+  // budget is left. e.g. lite, flash, (800ms), lite, flash, 3.6-flash.
+  const chain = modelChain(model)
+  const firstPass = chain.length > 1 ? chain.slice(0, -1) : []
+  const attempts = [...firstPass, ...chain]
+  for (let i = 0; i < attempts.length; i++) {
+    const m = attempts[i]
+    if (i > 0 && i === firstPass.length) await sleep(800)
+    const remaining = totalBudgetMs - (Date.now() - started)
+    if (remaining < 1500) break
+    const isLast = i === attempts.length - 1
+    const limit = isLast ? remaining : Math.min(attemptTimeoutMs, remaining)
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), limit)
+    let resp
+    try {
+      resp = await fetchImpl(`${API_BASE}/${m}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      })
+    } catch (err) {
+      lastFailure = err.name === 'AbortError' ? 'timeout' : 'network'
+      console.error(`Gemini ${m}: ${lastFailure}`)
+      continue
+    } finally {
+      clearTimeout(timer)
+    }
+
+    if (!resp.ok) {
+      // Details are logged server-side only; never echoed to the client.
+      console.error(`Gemini ${m}: HTTP ${resp.status}`, (await resp.text().catch(() => '')).slice(0, 300))
+      lastFailure = resp.status
+      if (RETRYABLE.has(resp.status)) continue
+      throw new RuleParserError('The AI service rejected the request (check the server API key configuration).', 502)
+    }
+
+    const data = await resp.json()
+    const raw = data?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
+    try {
+      return { ...JSON.parse(raw), model: m }
+    } catch {
+      console.error(`Gemini ${m} returned non-JSON:`, raw.slice(0, 300))
+      lastFailure = 'bad-json'
+      continue
+    }
   }
 
-  if (resp.status === 429) throw new RuleParserError('The AI service is rate-limited right now. Please try again in a minute.', 429)
-  if (!resp.ok) {
-    // Log details server-side only; never echo upstream errors (could include request metadata).
-    console.error('Gemini error', resp.status, await resp.text().catch(() => ''))
-    throw new RuleParserError('The AI service returned an error.', 502)
-  }
-
-  const data = await resp.json()
-  const raw = data?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
-  try {
-    return JSON.parse(raw)
-  } catch {
-    console.error('Gemini returned non-JSON:', raw.slice(0, 500))
-    throw new RuleParserError('The AI returned an unreadable answer. Please rephrase and try again.', 502)
-  }
+  if (lastFailure === 429) throw new RuleParserError('The AI service is rate-limited right now. Please try again in a minute.', 429)
+  if (lastFailure === 'timeout') throw new RuleParserError('The AI service took too long to respond. Please try again.', 504)
+  if (lastFailure === 'bad-json') throw new RuleParserError('The AI returned an unreadable answer. Please rephrase and try again.', 502)
+  throw new RuleParserError('The AI service is busy or unavailable right now. Please try again shortly.', 503)
 }
 
 /**

@@ -96,6 +96,7 @@ describe('new rule re-runs the engine on the current cart', () => {
 it('numbersInText', () => {
   expect(numbersInText('10% off if cart value is more than Rs.5,000')).toEqual([10, 5000])
   expect(numbersInText('Rs 200 off above 5k')).toEqual([200, 5000])
+  expect(numbersInText('half price on all Noon items')).toEqual([50])
 })
 
 // ── server ─────────────────────────────────────────────────────────
@@ -153,7 +154,36 @@ describe('server handler', () => {
     spy.mockRestore()
   })
 
+  it('falls back to the next model on 503 / 404 and reports which model answered', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const statuses = [503, 404, 503, 503]
+    const fetchImpl = vi.fn(async () => {
+      const st = statuses.shift()
+      return st ? { ok: false, status: st, text: async () => 'busy' } : geminiReply({ status: 'ok', rule: null, missing: [], clarification: '' })
+    })
+    const out = await parseRuleText('x', { apiKey: 'k', model: 'a,b,c', fetchImpl })
+    expect(fetchImpl.mock.calls.map(([url]) => url.match(/models\/([^:]+)/)[1])).toEqual(['a', 'b', 'a', 'b', 'c'])
+    expect(out.model).toBe('c')
+    spy.mockRestore()
+  })
+
+  it('does not retry a non-retryable error (bad key)', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fetchImpl = vi.fn(async () => ({ ok: false, status: 403, text: async () => '' }))
+    await expect(parseRuleText('x', { apiKey: 'bad', fetchImpl })).rejects.toThrow(/API key configuration/)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
+  })
+
+  it('all models busy → friendly 503', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fetchImpl = async () => ({ ok: false, status: 503, text: async () => '' })
+    await expect(parseRuleText('x', { apiKey: 'k', fetchImpl })).rejects.toMatchObject({ status: 503 })
+    spy.mockRestore()
+  })
+
   it('maps rate limits to 429', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
     const fetchImpl = async () => ({ ok: false, status: 429, text: async () => '' })
     await expect(parseRuleText('x', { apiKey: 'k', fetchImpl })).rejects.toMatchObject({ status: 429 })
   })

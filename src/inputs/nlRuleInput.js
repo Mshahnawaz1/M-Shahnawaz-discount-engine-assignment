@@ -38,9 +38,14 @@ export async function requestRuleParse(text, { cartItems = [] } = {}, fetchImpl 
   return payload
 }
 
-/** All numbers written in the text: "Rs.5,000 and 10%" → [5000, 10]. Handles "5k". */
+const WORD_NUMBERS = { half: 50, quarter: 25 }
+
+/** All numbers written in the text: "Rs.5,000 and 10%" → [5000, 10]. Handles "5k", "half price". */
 export function numbersInText(text) {
   const out = []
+  for (const [word, n] of Object.entries(WORD_NUMBERS)) {
+    if (new RegExp(`\\b${word}\\b`, 'i').test(text)) out.push(n)
+  }
   for (const m of String(text).matchAll(/(\d[\d,]*(?:\.\d+)?)\s*(k\b)?/gi)) {
     const n = Number(m[1].replace(/,/g, ''))
     if (Number.isFinite(n)) out.push(m[2] ? n * 1000 : n)

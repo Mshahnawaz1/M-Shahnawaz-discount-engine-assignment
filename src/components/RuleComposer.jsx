@@ -5,7 +5,7 @@
  * Nothing is added to the active rules until the user confirms.
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { requestRuleParse, interpretLlmResponse } from '../inputs/nlRuleInput.js'
 import { nextRuleId } from '../engine/validation.js'
 import { rupees, ruleValueLabel } from '../engine/format.js'
@@ -35,6 +35,15 @@ const box = (border, bg) => ({ border: `1px solid ${border}`, borderLeft: `3px s
 export default function RuleComposer({ rules, cartItems, currentTotal, previewTotal, onAdd }) {
   const [text, setText] = useState('')
   const [state, setState] = useState({ phase: 'idle' })
+  const [slow, setSlow] = useState(false)
+
+  // The AI service can take a while when it's overloaded (we fall back across
+  // models server-side) — tell the user rather than leaving a silent spinner.
+  useEffect(() => {
+    if (state.phase !== 'loading') return setSlow(false)
+    const t = setTimeout(() => setSlow(true), 4000)
+    return () => clearTimeout(t)
+  }, [state.phase])
 
   async function handleParse(e) {
     e?.preventDefault()
@@ -107,6 +116,7 @@ export default function RuleComposer({ rules, cartItems, currentTotal, previewTo
           ))}
         </div>
       </form>
+      {slow && <div style={{ ...S.hint, marginTop: 6 }}>The AI service is busy — still working (up to ~25s)…</div>}
 
       {state.phase === 'confirm' && (
         <div style={box(C.blue, C.blueBg)} role="dialog" aria-label="Confirm new rule">
@@ -122,6 +132,11 @@ export default function RuleComposer({ rules, cartItems, currentTotal, previewTo
           {currentTotal !== null && cartItems.length > 0 && (
             <div style={{ fontSize: 12, marginTop: 8 }}>
               Effect on the current cart: {rupees(currentTotal)} → <b>{rupees(previewTotal(state.rule))}</b>
+              {previewTotal(state.rule) === currentTotal && (
+                <div style={{ color: C.grey, marginTop: 2 }}>
+                  No change today — an equal or better offer already applies, or no item in the cart qualifies.
+                </div>
+              )}
             </div>
           )}
 

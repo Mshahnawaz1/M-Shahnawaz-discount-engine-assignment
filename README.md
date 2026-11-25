@@ -8,11 +8,11 @@ A customer-facing cart pricing engine. It picks the best offer per item, stacks 
 
 ```bash
 npm install
-cp .env.example .env.local   # then put your Gemini API key in it (only needed for plain-English rules)
+cp .env.example .env         # then put your Gemini API key in it (only needed for plain-English rules)
 npm run dev                  # → http://localhost:5173
 ```
 
-`npm test` runs the 79 unit and integration tests. `npm run make:pdfs` regenerates the sample PDFs.
+`npm test` runs the 82 unit and integration tests. `npm run make:pdfs` regenerates the sample PDFs.
 
 ## Try it
 
@@ -55,7 +55,8 @@ npm run dev                  # → http://localhost:5173
 | LLM **invents a number** that isn't in the text | Rejected. The value and threshold must appear in the user's sentence. For pricing, not guessing is the safer default. |
 | Brand or platform not in the cart ("Flipcart") | A warning on the confirmation card, with a one-click *Use "Flipkart"* fix. |
 | Duplicate rule, or a ≥ 50% discount | A warning on the confirmation card. The user can still confirm. |
-| LLM down, slow, rate-limited or not configured | A clear error with a retry option. Existing rules are untouched, upstream error details never reach the client, and requests time out after 15s. |
+| Gemini overloaded (503 — happened constantly in live testing) | The server falls back across models: lite, then flash, a 800ms backoff, both again, then `gemini-3.6-flash`. The whole attempt has a 25s budget. After 4s the UI shows "still working". |
+| LLM down, rate-limited or not configured | A clear error with a retry option. Existing rules are untouched, and upstream error details are logged on the server but never sent to the client. |
 | Malformed PDF row (bad price, missing cell) | The row is skipped with a reason, e.g. *"Row 2 (Bed Sheet Set): price "Rs.8 49" is not a valid positive amount — skipped"*. Valid rows still load. |
 | PDF with no text layer, no table header, password-protected, > 5 MB, or not a PDF | A clear error. **The current cart is kept.** Any upload with zero valid rows never wipes existing data. |
 | PDF footer or notes text | Ignored, with a note. |
@@ -73,7 +74,7 @@ npm run dev                  # → http://localhost:5173
 ## Deploying (Vercel)
 
 1. Import the repo in Vercel. The Vite framework preset is auto-detected (build `npm run build`, output `dist`).
-2. Add the environment variable `GEMINI_API_KEY`, and optionally `GEMINI_MODEL`, which defaults to `gemini-flash-latest`.
+2. Add the environment variable `GEMINI_API_KEY`, and optionally `GEMINI_MODEL` (one model or a comma-separated fallback list; default `gemini-flash-lite-latest,gemini-flash-latest,gemini-3.6-flash`). `vercel.json` gives the function a 30s max duration.
 3. Deploy. `api/parse-rule.js` becomes a serverless function automatically.
 
 ## Project structure

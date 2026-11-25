@@ -8,7 +8,7 @@
  * App never contains discount logic, and the engine never knows about inputs.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import CsvUploader from './components/CsvUploader.jsx'
 import DataTable from './components/DataTable.jsx'
 import ErrorBanner from './components/ErrorBanner.jsx'
@@ -19,6 +19,29 @@ import { loadCartFromPdf } from './inputs/pdfCartInput.js'
 import { calculateCart } from './engine/discountEngine.js'
 import { rupees, ruleValueLabel } from './engine/format.js'
 import { S, C } from './styles.js'
+import sampleRulesCsv from '../sample-data/rules.csv?raw'
+import sampleCartCsv from '../sample-data/cart.csv?raw'
+import samplePdfUrl from '../sample-data/cart.pdf?url'
+import malformedPdfUrl from '../sample-data/cart-malformed.pdf?url'
+
+function Logo() {
+  return (
+    <a href="#top" className="logo" aria-label="Opptra home">
+      <svg width="30" height="22" viewBox="0 0 30 22" aria-hidden>
+        <path d="M2 3 L12 11 L2 19 Z" fill="#ff5800" />
+        <path d="M13 3 L23 11 L13 19 Z" fill="#ff5800" opacity=".75" />
+      </svg>
+      opptra
+    </a>
+  )
+}
+
+const STEPS = [
+  ['Load offers', 'Upload rules as CSV, or describe a new one in plain English and let AI draft it.'],
+  ['Load the cart', 'Upload a cart CSV or an order PDF — bad rows are flagged, never silently priced.'],
+  ['Best deal wins', 'Each item gets the biggest saving; stackable offers apply on top.'],
+  ['Cart offer', 'Big carts unlock a cart-wide discount, shown as its own line.'],
+]
 
 const cap = (v) => (v ? v.charAt(0).toUpperCase() + v.slice(1) : '—')
 
@@ -29,7 +52,7 @@ function rulesColumns(onRemove) {
       label: 'Rule ID',
       render: (v, row) => (
         <span style={{ whiteSpace: 'nowrap' }}>
-          <b>{v}</b> {row.source === 'nl' && <span style={S.tag(C.blue, C.blueBg)}>AI</span>}
+          <b>{v}</b> {row.source === 'nl' && <span style={S.tag('#fff', C.orange)}>AI</span>}
         </span>
       ),
     },
@@ -46,7 +69,7 @@ function rulesColumns(onRemove) {
           title={`Remove ${row.ruleId}`}
           aria-label={`Remove ${row.ruleId}`}
           onClick={() => onRemove(row.ruleId)}
-          style={{ border: 'none', background: 'none', color: C.grey, cursor: 'pointer', fontSize: 14 }}
+          style={{ border: 'none', background: 'none', color: C.grey, cursor: 'pointer', fontSize: 18, lineHeight: 1 }}
         >
           ×
         </button>
@@ -56,11 +79,11 @@ function rulesColumns(onRemove) {
 }
 
 const CART_COLUMNS = [
-  { key: 'itemId', label: 'Item' },
+  { key: 'itemId', label: 'Item', render: (v) => <span style={{ whiteSpace: 'nowrap' }}>{v}</span> },
   { key: 'product', label: 'Product' },
   { key: 'brand', label: 'Brand' },
   { key: 'platform', label: 'Platform' },
-  { key: 'basePrice', label: 'Base Price', render: (v) => rupees(v) },
+  { key: 'basePrice', label: 'Price', render: (v) => <span style={{ whiteSpace: 'nowrap' }}>{rupees(v)}</span> },
 ]
 
 export default function App() {
@@ -126,103 +149,165 @@ export default function App() {
 
   const canCalculate = rules.length > 0 && cartItems.length > 0
 
+  const summaryRef = useRef(null)
+  useEffect(() => {
+    if (hasCalculated) summaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [hasCalculated])
+
+  function loadSampleData() {
+    handleRulesCsv(sampleRulesCsv, 'rules.csv (sample)')
+    handleCartCsv(sampleCartCsv, 'cart.csv (sample)')
+    document.getElementById('workspace')?.scrollIntoView({ behavior: 'smooth' })
+  }
+
   return (
-    <div style={S.page}>
-      <div style={S.header}>
-        <div style={S.logoTxt}>
-          O<span style={S.logoSpan}>pp</span>tra
+    <div id="top">
+      <nav className="nav">
+        <Logo />
+        <div className="nav-links">
+          <a href="#how">How it works</a>
+          <a href="#workspace">Offers &amp; cart</a>
+          <a href="#checkout">Checkout</a>
         </div>
-        <div style={S.headerSub}>Discount Engine</div>
-      </div>
+        <button className="btn" onClick={loadSampleData}>Load sample data</button>
+      </nav>
 
-      <div style={S.main}>
-        <div className="grid2">
-          {/* ── Rules ── */}
-          <div style={S.section}>
-            <div style={S.sectionTitle}>Discount Rules</div>
-            <CsvUploader
-              label="rules.csv"
-              description="Upload your discount rules CSV"
-              onLoad={handleRulesCsv}
-              hasData={rules.length > 0}
-              fileName={rulesSource.fileName}
-            />
-            <ErrorBanner errors={rulesSource.errors} />
-            {rules.length > 0 && (
-              <div style={{ marginTop: '0.75rem' }}>
-                <div style={S.hint}>
-                  {rules.length} active rule{rules.length > 1 ? 's' : ''}
-                </div>
-                <DataTable columns={rulesColumns(removeRule)} rows={rules} />
+      <header className="hero">
+        <div className="hero-eyebrow">Opptra · Checkout pricing engine</div>
+        <h1>Every Cart, Best Price</h1>
+        <p>(the biggest saving for every customer — explained in plain words)</p>
+        <div className="hero-actions">
+          <a className="btn" href="#workspace">Start pricing</a>
+          <a className="btn btn-ghost" href={samplePdfUrl} download="cart.pdf">Sample cart PDF</a>
+        </div>
+        <div className="hero-stats">
+          <span className="hero-stat">Brand · Platform · Cart offers</span>
+          <span className="hero-stat">AI rule drafting</span>
+          <span className="hero-stat">PDF cart upload</span>
+        </div>
+      </header>
+
+      <main className="main">
+        <section id="how">
+          <div className="section-head" style={{ marginTop: 0 }}>
+            <h2>How it works</h2>
+            <p>One final price, one clear offer label, no surprises.</p>
+          </div>
+          <div className="steps">
+            {STEPS.map(([title, body], i) => (
+              <div className="step" key={title}>
+                <div className="step-num">0{i + 1}</div>
+                <h3>{title}</h3>
+                <p>{body}</p>
               </div>
-            )}
-            <RuleComposer
-              rules={rules}
-              cartItems={cartItems}
-              currentTotal={cartItems.length > 0 ? calculateCart(cartItems, rules).total : null}
-              previewTotal={(rule) => calculateCart(cartItems, [...rules, rule]).total}
-              onAdd={addRule}
-            />
+            ))}
+          </div>
+        </section>
+
+        <section id="workspace" style={{ scrollMarginTop: 90 }}>
+          <div className="section-head">
+            <h2>Offers &amp; cart</h2>
+            <p>
+              No files handy? <button className="btn btn-outline btn-sm" onClick={loadSampleData}>Load sample data</button>{' '}
+              or grab the <a href={malformedPdfUrl} download="cart-malformed.pdf" style={{ color: C.orange }}>malformed PDF</a> to see error handling.
+            </p>
           </div>
 
-          {/* ── Cart ── */}
-          <div style={S.section}>
-            <div style={S.sectionTitle}>Cart Items</div>
-            <div className="grid2" style={{ gap: '0.6rem' }}>
+          <div className="grid2">
+            {/* ── Rules ── */}
+            <div className="card">
+              <div className="eyebrow">Step 1</div>
+              <h3 className="card-title">Discount rules</h3>
               <CsvUploader
-                label="cart.csv"
-                description="Upload a cart CSV"
-                onLoad={handleCartCsv}
-                hasData={cartItems.length > 0 && /\.csv$/i.test(cartSource.fileName)}
-                fileName={cartSource.fileName}
+                label="rules.csv"
+                description="Upload your discount rules CSV"
+                onLoad={handleRulesCsv}
+                hasData={rules.length > 0}
+                fileName={rulesSource.fileName}
               />
-              <CsvUploader
-                label="cart.pdf"
-                description="Or upload an order PDF"
-                accept=".pdf,application/pdf"
-                readAs="file"
-                busy={pdfBusy}
-                onLoad={handleCartPdf}
-                hasData={cartItems.length > 0 && /\.pdf$/i.test(cartSource.fileName)}
-                fileName={cartSource.fileName}
+              <ErrorBanner errors={rulesSource.errors} />
+              {rules.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <div className="hint" style={{ marginBottom: 8 }}>
+                    {rules.length} active rule{rules.length > 1 ? 's' : ''}
+                  </div>
+                  <DataTable columns={rulesColumns(removeRule)} rows={rules} />
+                </div>
+              )}
+              <RuleComposer
+                rules={rules}
+                cartItems={cartItems}
+                currentTotal={cartItems.length > 0 ? calculateCart(cartItems, rules).total : null}
+                previewTotal={(rule) => calculateCart(cartItems, [...rules, rule]).total}
+                onAdd={addRule}
               />
             </div>
-            <ErrorBanner errors={cartSource.errors} />
-            <ErrorBanner errors={cartSource.warnings} variant="warning" />
-            {cartItems.length > 0 && (
-              <div style={{ marginTop: '0.75rem' }}>
-                <div style={S.hint}>
-                  {cartSource.notice || `${cartItems.length} item${cartItems.length > 1 ? 's' : ''} in cart`}
-                </div>
-                <DataTable columns={CART_COLUMNS} rows={cartItems} />
+
+            {/* ── Cart ── */}
+            <div className="card">
+              <div className="eyebrow">Step 2</div>
+              <h3 className="card-title">Cart items</h3>
+              <div className="grid2" style={{ gap: 12 }}>
+                <CsvUploader
+                  label="cart.csv"
+                  description="Upload a cart CSV"
+                  onLoad={handleCartCsv}
+                  hasData={cartItems.length > 0 && /\.csv/i.test(cartSource.fileName)}
+                  fileName={cartSource.fileName}
+                />
+                <CsvUploader
+                  label="cart.pdf"
+                  description="Or upload an order PDF"
+                  accept=".pdf,application/pdf"
+                  readAs="file"
+                  busy={pdfBusy}
+                  onLoad={handleCartPdf}
+                  hasData={cartItems.length > 0 && /\.pdf$/i.test(cartSource.fileName)}
+                  fileName={cartSource.fileName}
+                />
               </div>
-            )}
-          </div>
-        </div>
-
-        {!hasCalculated && (
-          <div style={{ textAlign: 'center', marginBottom: '1.2rem' }}>
-            <button
-              style={S.btn}
-              onClick={() => setHasCalculated(true)}
-              disabled={!canCalculate}
-            >
-              Calculate Discounts
-            </button>
-            {!canCalculate && <div style={S.hint}>Load rules and a cart to calculate</div>}
-          </div>
-        )}
-
-        {result && (
-          <div style={S.section}>
-            <div style={S.sectionTitle}>Cart Summary</div>
-            <div style={{ ...S.hint, marginTop: -4, marginBottom: 8 }}>
-              Updates automatically when rules or cart change.
+              <ErrorBanner errors={cartSource.errors} />
+              <ErrorBanner errors={cartSource.warnings} variant="warning" />
+              {cartItems.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <div className="hint" style={{ marginBottom: 8 }}>
+                    {cartSource.notice || `${cartItems.length} item${cartItems.length > 1 ? 's' : ''} in cart`}
+                  </div>
+                  <DataTable columns={CART_COLUMNS} rows={cartItems} />
+                </div>
+              )}
             </div>
-            <CartSummary result={result} />
           </div>
-        )}
-      </div>
+
+          {!hasCalculated && (
+            <div style={{ textAlign: 'center', marginTop: 32 }}>
+              <button className="btn" onClick={() => setHasCalculated(true)} disabled={!canCalculate}>
+                Calculate discounts
+              </button>
+              {!canCalculate && <div className="hint">Load rules and a cart to calculate</div>}
+            </div>
+          )}
+        </section>
+
+        <section id="checkout" ref={summaryRef} style={{ scrollMarginTop: 90 }}>
+          {result && (
+            <>
+              <div className="section-head">
+                <h2>Your checkout</h2>
+                <p>Updates automatically when offers or the cart change.</p>
+              </div>
+              <div className="card">
+                <CartSummary result={result} />
+              </div>
+            </>
+          )}
+        </section>
+      </main>
+
+      <footer className="footer">
+        <Logo />
+        <span>Discount Engine · FDE Intern assignment · in-memory, nothing is stored</span>
+      </footer>
     </div>
   )
 }

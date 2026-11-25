@@ -5,40 +5,24 @@
  * Columns are defined as [{ key, label, render? }].
  */
 
+const wrap = { overflowX: 'auto', border: '1px solid #ece7dc', borderRadius: 12 }
+
 export default function DataTable({ columns, rows, emptyMessage = 'No data loaded.' }) {
   if (!rows || rows.length === 0) {
-    return (
-      <div
-        style={{
-          padding: '1rem',
-          textAlign: 'center',
-          color: '#888',
-          fontSize: 13,
-          border: '1px solid #CECECE',
-          borderRadius: 4,
-        }}
-      >
-        {emptyMessage}
-      </div>
-    )
+    return <div style={{ ...wrap, padding: '1.2rem', textAlign: 'center', color: '#6f6b63', fontSize: 14 }}>{emptyMessage}</div>
   }
 
   return (
-    <div style={{ overflowX: 'auto', border: '1px solid #CECECE', borderRadius: 4 }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+    <div style={wrap}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
         <thead>
-          <tr style={{ background: '#131A48', color: '#fff' }}>
+          <tr style={{ background: '#fffce8' }}>
             {columns.map((col) => (
               <th
                 key={col.key}
                 style={{
-                  padding: '7px 10px',
-                  textAlign: 'left',
-                  fontWeight: 700,
-                  fontSize: 11,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                  whiteSpace: 'nowrap',
+                  padding: '11px 10px', textAlign: 'left', fontWeight: 700, fontSize: 11, color: '#22221f',
+                  textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap', borderBottom: '1px solid #f3ecc9',
                 }}
               >
                 {col.label}
@@ -48,12 +32,9 @@ export default function DataTable({ columns, rows, emptyMessage = 'No data loade
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr
-              key={i}
-              style={{ background: i % 2 === 0 ? '#fff' : '#fafafa', borderBottom: '1px solid #f0f0f0' }}
-            >
+            <tr key={row.itemId ?? row.ruleId ?? i} style={{ borderBottom: i === rows.length - 1 ? 'none' : '1px solid #f3f0e8' }}>
               {columns.map((col) => (
-                <td key={col.key} style={{ padding: '6px 10px', color: '#131A48', verticalAlign: 'top' }}>
+                <td key={col.key} style={{ padding: '10px 10px', color: '#22221f', verticalAlign: 'top' }}>
                   {col.render ? col.render(row[col.key], row) : row[col.key] ?? '—'}
                 </td>
               ))}

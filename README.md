@@ -1,6 +1,6 @@
 # Opptra Discount Engine — FDE Intern Assignment
 
-**Live demo:** _TODO — add the Vercel URL after deploying_
+**Live demo:**  https://m-shahnawaz-discount-engine-assignm.vercel.app/
 
 A customer-facing cart pricing engine. It picks the best offer per item, stacks stackable offers, applies a cart-level offer, and explains every price in plain language. Rules can come from CSV or plain English (parsed by an LLM), and carts from CSV or PDF.
 

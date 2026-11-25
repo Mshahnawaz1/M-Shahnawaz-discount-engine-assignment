@@ -1,26 +1,26 @@
 /**
  * ErrorBanner.jsx
- * Displays a list of parse or validation errors.
+ * Displays a list of parse/validation errors, or (variant="warning") softer notes.
  */
 
-export default function ErrorBanner({ errors }) {
+const VARIANTS = {
+  error: { bg: '#fce8e8', border: '#e57373', accent: '#c0392b', title: '#8a1a1a', text: '#5a1010', noun: 'issue' },
+  warning: { bg: '#fff7e0', border: '#f0c36d', accent: '#c98a00', title: '#8a5a00', text: '#5a3d00', noun: 'note' },
+}
+
+export default function ErrorBanner({ errors, variant = 'error', title }) {
   if (!errors || errors.length === 0) return null
+  const v = VARIANTS[variant]
   return (
     <div
-      style={{
-        background: '#fce8e8',
-        border: '1px solid #e57373',
-        borderLeft: '3px solid #c0392b',
-        borderRadius: 4,
-        padding: '0.6rem 0.9rem',
-        marginTop: '0.5rem',
-      }}
+      role={variant === 'error' ? 'alert' : 'status'}
+      style={{ background: v.bg, border: `1px solid ${v.border}`, borderLeft: `3px solid ${v.accent}`, borderRadius: 4, padding: '0.6rem 0.9rem', marginTop: '0.5rem' }}
     >
-      <div style={{ fontWeight: 700, fontSize: 12, color: '#8a1a1a', marginBottom: 4 }}>
-        {errors.length} issue{errors.length > 1 ? 's' : ''} found
+      <div style={{ fontWeight: 700, fontSize: 12, color: v.title, marginBottom: 4 }}>
+        {title ?? `${errors.length} ${v.noun}${errors.length > 1 ? 's' : ''} found`}
       </div>
       {errors.map((e, i) => (
-        <div key={i} style={{ fontSize: 12, color: '#5a1010', marginTop: 2 }}>
+        <div key={i} style={{ fontSize: 12, color: v.text, marginTop: 2 }}>
           {e}
         </div>
       ))}

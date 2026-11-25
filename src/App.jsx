@@ -15,6 +15,7 @@ import ErrorBanner from './components/ErrorBanner.jsx'
 import CartSummary from './components/CartSummary.jsx'
 import RuleComposer from './components/RuleComposer.jsx'
 import { parseRulesCSV, parseCartCSV } from './inputs/csvInput.js'
+import { loadCartFromPdf } from './inputs/pdfCartInput.js'
 import { calculateCart } from './engine/discountEngine.js'
 import { rupees, ruleValueLabel } from './engine/format.js'
 import { S, C } from './styles.js'
@@ -34,8 +35,8 @@ function rulesColumns(onRemove) {
     },
     { key: 'scope', label: 'Scope', render: cap },
     { key: 'appliesTo', label: 'Applies To', render: (v, row) => (row.scope === 'cart' ? 'Entire cart' : v) },
-    { key: 'value', label: 'Value', render: (_, row) => ruleValueLabel(row) },
-    { key: 'minCartValue', label: 'Condition', render: (v) => (v ? `Cart ≥ ${rupees(v)}` : '—') },
+    { key: 'value', label: 'Value', render: (_, row) => <span style={{ whiteSpace: 'nowrap' }}>{ruleValueLabel(row)}</span> },
+    { key: 'minCartValue', label: 'Condition', render: (v) => (v ? <span style={{ whiteSpace: 'nowrap' }}>Cart ≥ {rupees(v)}</span> : '—') },
     { key: 'stackable', label: 'Stack', render: (v) => (v ? 'Yes' : 'No') },
     {
       key: '_remove',
@@ -67,7 +68,8 @@ export default function App() {
   const [rulesSource, setRulesSource] = useState({ fileName: '', errors: [] })
 
   const [cartItems, setCartItems] = useState([])
-  const [cartSource, setCartSource] = useState({ fileName: '', errors: [] })
+  const [cartSource, setCartSource] = useState({ fileName: '', errors: [], warnings: [], notice: '' })
+  const [pdfBusy, setPdfBusy] = useState(false)
 
   const [hasCalculated, setHasCalculated] = useState(false)
 
@@ -76,18 +78,42 @@ export default function App() {
     [hasCalculated, cartItems, rules]
   )
 
-  // ── Input handlers: each adapter returns { data, errors } ──
+  // ── Input handlers ──
+  // Every adapter returns { data, errors, warnings }. A load that yields zero
+  // valid rows never wipes what the user already has.
 
   function handleRulesCsv(text, fileName) {
     const { data, errors } = parseRulesCSV(text)
-    setRules(data)
-    setRulesSource({ fileName, errors })
+    if (data.length > 0) setRules(data)
+    setRulesSource({ fileName: data.length > 0 ? fileName : rulesSource.fileName, errors: data.length > 0 ? errors : [...errors, 'No valid rules found — current rules kept.'] })
+  }
+
+  function applyCartInput({ data, errors, warnings = [] }, fileName) {
+    if (data.length === 0) {
+      setCartSource((prev) => ({
+        ...prev,
+        errors: [...errors, cartItems.length > 0 ? `${fileName}: no valid items — your current cart is unchanged.` : `${fileName}: no valid items found.`],
+        warnings,
+        notice: '',
+      }))
+      return
+    }
+    setCartItems(data)
+    const skipped = errors.length > 0 ? ` (${errors.length} row${errors.length > 1 ? 's' : ''} skipped)` : ''
+    setCartSource({ fileName, errors, warnings, notice: `Loaded ${data.length} item${data.length > 1 ? 's' : ''} from ${fileName}${skipped}` })
   }
 
   function handleCartCsv(text, fileName) {
-    const { data, errors } = parseCartCSV(text)
-    setCartItems(data)
-    setCartSource({ fileName, errors })
+    applyCartInput(parseCartCSV(text), fileName)
+  }
+
+  async function handleCartPdf(file, fileName) {
+    setPdfBusy(true)
+    try {
+      applyCartInput(await loadCartFromPdf(file), fileName)
+    } finally {
+      setPdfBusy(false)
+    }
   }
 
   function addRule(rule) {
@@ -142,18 +168,31 @@ export default function App() {
           {/* ── Cart ── */}
           <div style={S.section}>
             <div style={S.sectionTitle}>Cart Items</div>
-            <CsvUploader
-              label="cart.csv"
-              description="Upload your cart CSV"
-              onLoad={handleCartCsv}
-              hasData={cartItems.length > 0}
-              fileName={cartSource.fileName}
-            />
+            <div className="grid2" style={{ gap: '0.6rem' }}>
+              <CsvUploader
+                label="cart.csv"
+                description="Upload a cart CSV"
+                onLoad={handleCartCsv}
+                hasData={cartItems.length > 0 && /\.csv$/i.test(cartSource.fileName)}
+                fileName={cartSource.fileName}
+              />
+              <CsvUploader
+                label="cart.pdf"
+                description="Or upload an order PDF"
+                accept=".pdf,application/pdf"
+                readAs="file"
+                busy={pdfBusy}
+                onLoad={handleCartPdf}
+                hasData={cartItems.length > 0 && /\.pdf$/i.test(cartSource.fileName)}
+                fileName={cartSource.fileName}
+              />
+            </div>
             <ErrorBanner errors={cartSource.errors} />
+            <ErrorBanner errors={cartSource.warnings} variant="warning" />
             {cartItems.length > 0 && (
               <div style={{ marginTop: '0.75rem' }}>
                 <div style={S.hint}>
-                  {cartItems.length} item{cartItems.length > 1 ? 's' : ''} in cart
+                  {cartSource.notice || `${cartItems.length} item${cartItems.length > 1 ? 's' : ''} in cart`}
                 </div>
                 <DataTable columns={CART_COLUMNS} rows={cartItems} />
               </div>

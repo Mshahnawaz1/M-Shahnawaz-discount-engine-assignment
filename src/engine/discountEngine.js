@@ -124,14 +124,13 @@ export function applyDiscounts(item, rules) {
   const { finalPrice, lines, winner, losers } = selectAndApply(item.basePrice, matching)
   const stacked = lines.length > 1
 
+  // e.g. "Platform offer: 15% off — best deal: saves Rs.195 vs Rs.150 (Brand offer)"
   let reasoning = lines.map((l) => ruleLabel(l.rule)).join(' + ')
-  const notes = []
+  if (stacked) reasoning += ' (combined)'
   if (losers.length > 0) {
-    const beaten = losers.map((l) => `${ruleLabel(l.rule)} (saves ${rupees(l.saving)})`).join(', ')
-    notes.push(`best deal: saves ${rupees(winner.saving)}, better than ${beaten}`)
+    const beaten = losers.map((l) => `${rupees(l.saving)} (${ruleLabel(l.rule).split(':')[0]})`).join(', ')
+    reasoning += ` — best deal: saves ${rupees(winner.saving)} vs ${beaten}`
   }
-  if (stacked) notes.push('offers combined')
-  if (notes.length > 0) reasoning += ` — ${notes.join('; ')}`
 
   let status = 'applied'
   if (stacked) status = 'stacked'

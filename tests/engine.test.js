@@ -31,12 +31,12 @@ describe('statuses and customer reasoning', () => {
   it('ITEM-01 explains why the platform offer won', () => {
     expect(byId['ITEM-01'].status).toBe('max-discount')
     expect(byId['ITEM-01'].reasoning).toMatch(/Platform offer: 15% off/)
-    expect(byId['ITEM-01'].reasoning).toMatch(/saves Rs\.195.*Brand offer: Rs\.150 off/)
+    expect(byId['ITEM-01'].reasoning).toBe('Platform offer: 15% off — best deal: saves Rs.195 vs Rs.150 (Brand offer)')
     expect(byId['ITEM-01'].skippedRules).toEqual(['RULE-02'])
   })
   it('ITEM-02 is stacked', () => {
     expect(byId['ITEM-02'].status).toBe('stacked')
-    expect(byId['ITEM-02'].reasoning).toMatch(/Brand offer: Rs\.150 off \+ Platform offer: 10% off/)
+    expect(byId['ITEM-02'].reasoning).toBe('Brand offer: Rs.150 off + Platform offer: 10% off (combined)')
   })
   it('ITEM-04 gets a meaningful no-offer message', () => {
     expect(byId['ITEM-04'].status).toBe('none')

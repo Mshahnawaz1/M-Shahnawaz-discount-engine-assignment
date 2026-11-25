@@ -12,7 +12,7 @@ cp .env.example .env         # then put your Gemini API key in it (only needed f
 npm run dev                  # → http://localhost:5173
 ```
 
-`npm test` runs the 82 unit and integration tests. `npm run make:pdfs` regenerates the sample PDFs.
+`npm test` runs the 92 unit and integration tests. `npm run make:pdfs` regenerates the sample PDFs.
 
 ## Try it
 
@@ -56,6 +56,7 @@ npm run dev                  # → http://localhost:5173
 | Brand or platform not in the cart ("Flipcart") | A warning on the confirmation card, with a one-click *Use "Flipkart"* fix. |
 | Duplicate rule, or a ≥ 50% discount | A warning on the confirmation card. The user can still confirm. |
 | Gemini overloaded (503 — happened constantly in live testing) | The server falls back across models: lite, then flash, a 800ms backoff, both again, then `gemini-3.6-flash`. The whole attempt has a 25s budget. After 4s the UI shows "still working". |
+| Someone hammers the LLM endpoint | An in-memory **token bucket** per IP (burst 5, then 1 every 12s) plus a global bucket (burst 30, then 1/s) to cap total Gemini spend. Returns 429 with `Retry-After`. Only requests that pass input validation use a token. *Best-effort:* each serverless instance keeps its own buckets. For exact limits, swap in Redis (e.g. Upstash) behind the same interface. |
 | LLM down, rate-limited or not configured | A clear error with a retry option. Existing rules are untouched, and upstream error details are logged on the server but never sent to the client. |
 | Malformed PDF row (bad price, missing cell) | The row is skipped with a reason, e.g. *"Row 2 (Bed Sheet Set): price "Rs.8 49" is not a valid positive amount — skipped"*. Valid rows still load. |
 | PDF with no text layer, no table header, password-protected, > 5 MB, or not a PDF | A clear error. **The current cart is kept.** Any upload with zero valid rows never wipes existing data. |
@@ -82,6 +83,7 @@ npm run dev                  # → http://localhost:5173
 ```
 api/parse-rule.js            Vercel function → server/geminiRuleParser.js
 server/geminiRuleParser.js   prompt, response schema, Gemini call, request handler
+server/rateLimiter.js        in-memory token bucket (per IP + global)
 src/engine/                  discountEngine.js · validation.js · format.js   (pure)
 src/inputs/                  csvInput.js · nlRuleInput.js · pdfCartInput.js · pdfTableParser.js
 src/components/              CartSummary · RuleComposer · CsvUploader (CSV + PDF) · DataTable · ErrorBanner

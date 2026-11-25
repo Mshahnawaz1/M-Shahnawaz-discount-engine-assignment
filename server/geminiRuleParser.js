@@ -8,6 +8,7 @@
  */
 
 import { MAX_RULE_TEXT } from '../src/inputs/limits.js'
+import { createDefaultLimiters, checkRateLimit, getClientIp } from './rateLimiter.js'
 
 // Tried in order. Flash models regularly return 503 "high demand", so we fall
 // back to other models instead of failing the user. Lite goes first: in live
@@ -164,11 +165,14 @@ export async function parseRuleText(text, { apiKey, model, knownBrands, knownPla
   throw new RuleParserError('The AI service is busy or unavailable right now. Please try again shortly.', 503)
 }
 
+// Module-level so buckets survive across requests within a warm instance.
+const defaultLimiters = createDefaultLimiters()
+
 /**
  * Plain Node (req, res) handler — works as a Vercel function and as Vite dev
  * middleware without framework-specific helpers.
  */
-export async function handleParseRuleRequest(req, res, env = process.env) {
+export async function handleParseRuleRequest(req, res, env = process.env, limiters = defaultLimiters) {
   const send = (status, payload) => {
     res.statusCode = status
     res.setHeader('Content-Type', 'application/json')
@@ -191,6 +195,16 @@ export async function handleParseRuleRequest(req, res, env = process.env) {
   const text = typeof body?.text === 'string' ? body.text.trim() : ''
   if (!text) return send(400, { error: 'Please describe a rule first.' })
   if (text.length > MAX_INPUT_CHARS) return send(400, { error: `Please keep the rule under ${MAX_INPUT_CHARS} characters.` })
+
+  // Rate limit only requests that would actually reach the LLM (after cheap
+  // validation, so malformed requests don't burn the caller's tokens).
+  const limit = checkRateLimit(limiters, getClientIp(req))
+  if (!limit.ok) {
+    res.setHeader('Retry-After', String(limit.retryAfterSec))
+    const who = limit.scope === 'global' ? 'The rule parser is busy' : "You're sending rules quickly"
+    return send(429, { error: `${who} — please wait ${limit.retryAfterSec}s and try again.` })
+  }
+  res.setHeader('X-RateLimit-Remaining', String(limit.remaining))
 
   try {
     const parsed = await parseRuleText(text, {

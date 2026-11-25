@@ -88,4 +88,5 @@ src/components/              CartSummary · RuleComposer · CsvUploader (CSV + P
 tests/                       engine, validation, CSV, NL (mocked LLM + handler), PDF (synthetic + real files)
 sample-data/                 rules.csv (incl. RULE-04) · cart.csv · cart.pdf · cart-malformed.pdf
 implementation.md            the plan this was built from
+docs/notes.md                design rationale, interview Q&A, production system design
 ```

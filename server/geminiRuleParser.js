@@ -9,7 +9,7 @@
 
 import { MAX_RULE_TEXT } from '../src/inputs/limits.js'
 
-const DEFAULT_MODEL = 'gemini-2.5-flash'
+const DEFAULT_MODEL = 'gemini-flash-latest' // rolling alias; pin with GEMINI_MODEL (e.g. gemini-3.8-flash)
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
 export const MAX_INPUT_CHARS = MAX_RULE_TEXT
 

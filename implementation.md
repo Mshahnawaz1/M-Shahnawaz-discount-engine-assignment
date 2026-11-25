@@ -219,3 +219,20 @@ Scripts: `npm test`. No E2E framework (out of scope for 2–3h).
 | M6 | README, design notes, final live check, commit and push | 20m | Submission ready |
 
 Commits: one per milestone on `main` of the fork (small, readable history).
+
+## 13. Progress
+
+| # | Status | Notes |
+|---|---|---|
+| M0 | ✅ | vitest added; base engine verified against the brief |
+| M1 | ✅ | `validation.js`, `format.js`; CSV adapter moved to `src/inputs/` |
+| M2 | ✅ | cart offer, clamp, status/reasoning, nudge; `CartSummary` |
+| M3 | ⏳ | Deploy to Vercel — needs the account owner (env var `GEMINI_API_KEY`) |
+| M4 | ✅ | Gemini function + guardrails + confirmation card (tested with a mocked LLM; needs one live check with a real key) |
+| M5 | ✅ | PDF upload; sample + malformed PDFs; tested through real pdf.js |
+| M6 | ✅ | README with design notes; live URL still to add |
+
+Deviations from the plan:
+- Default model is the `gemini-flash-latest` alias (2.5 Flash is deprecated); pin with `GEMINI_MODEL`.
+- Added a guard that rejects LLM-proposed numbers not present in the user's text.
+- Reused `CsvUploader` for PDFs (`readAs="file"`) instead of a separate `PdfUploader`.

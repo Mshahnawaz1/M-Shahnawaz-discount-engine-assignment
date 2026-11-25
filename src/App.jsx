@@ -13,6 +13,7 @@ import CsvUploader from './components/CsvUploader.jsx'
 import DataTable from './components/DataTable.jsx'
 import ErrorBanner from './components/ErrorBanner.jsx'
 import CartSummary from './components/CartSummary.jsx'
+import RuleComposer from './components/RuleComposer.jsx'
 import { parseRulesCSV, parseCartCSV } from './inputs/csvInput.js'
 import { calculateCart } from './engine/discountEngine.js'
 import { rupees, ruleValueLabel } from './engine/format.js'
@@ -89,6 +90,10 @@ export default function App() {
     setCartSource({ fileName, errors })
   }
 
+  function addRule(rule) {
+    setRules((rs) => [...rs, rule])
+  }
+
   function removeRule(ruleId) {
     setRules((rs) => rs.filter((r) => r.ruleId !== ruleId))
   }
@@ -125,6 +130,13 @@ export default function App() {
                 <DataTable columns={rulesColumns(removeRule)} rows={rules} />
               </div>
             )}
+            <RuleComposer
+              rules={rules}
+              cartItems={cartItems}
+              currentTotal={cartItems.length > 0 ? calculateCart(cartItems, rules).total : null}
+              previewTotal={(rule) => calculateCart(cartItems, [...rules, rule]).total}
+              onAdd={addRule}
+            />
           </div>
 
           {/* ── Cart ── */}
